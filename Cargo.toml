@@ -8,3 +8,6 @@ members = [
     "backend/api",
     "agent",
 ]
+
+[profile.release]
+overflow-checks = true
