@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "contracts/asset-registry",
+    "contracts/prediction-market",
+    "contracts/reputation",
+    "contracts/rewards",
+    "backend/api",
+    "agent",
+]
