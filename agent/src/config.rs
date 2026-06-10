@@ -3,8 +3,8 @@
 pub struct Config {
     /// Base URL of the StarSight backend API (e.g. `http://localhost:3001`).
     pub api_base_url: String,
-    /// Anthropic Claude API key for generating predictions.
-    pub claude_api_key: String,
+    /// Google Gemini API key for generating predictions.
+    pub gemini_api_key: String,
     /// Stellar Soroban RPC endpoint URL.
     pub stellar_rpc_url: String,
     /// Stellar network passphrase (e.g. "Test SDF Network ; September 2015").
@@ -28,7 +28,7 @@ impl Config {
         let api_port = std::env::var("API_PORT").unwrap_or_else(|_| "3001".into());
         Self {
             api_base_url: format!("http://localhost:{}", api_port),
-            claude_api_key: required_env("CLAUDE_API_KEY"),
+            gemini_api_key: required_env("GEMINI_API_KEY"),
             stellar_rpc_url: required_env("STELLAR_RPC_URL"),
             network_passphrase: required_env("STELLAR_NETWORK_PASSPHRASE"),
             deployer_secret_key: required_env("DEPLOYER_SECRET_KEY"),

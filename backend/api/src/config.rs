@@ -1,4 +1,5 @@
 /// Typed configuration loaded from environment variables.
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Config {
     /// PostgreSQL connection string (e.g. `postgres://user:pass@host/db`).

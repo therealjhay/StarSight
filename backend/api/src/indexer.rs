@@ -69,6 +69,7 @@ struct GetEventsResult {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct SorobanEvent {
     /// The type of event (contract, system, diagnostic).
     #[serde(rename = "type")]

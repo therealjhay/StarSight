@@ -77,6 +77,7 @@ pub struct RawPrediction {
 
 /// Record of a prediction that was successfully submitted on-chain.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SubmittedPrediction {
     /// On-chain prediction ID returned by the contract.
     pub prediction_id: u64,

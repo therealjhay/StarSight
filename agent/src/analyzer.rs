@@ -5,26 +5,26 @@ use crate::models::{AssetMarketData, RawPrediction};
 // Error type
 // ---------------------------------------------------------------------------
 
-/// Errors that can occur during Claude API analysis.
+/// Errors that can occur during Gemini API analysis.
 #[derive(Debug)]
 pub enum AnalyzeError {
-    /// HTTP request to the Claude API failed.
+    /// HTTP request to the Gemini API failed.
     Http(reqwest::Error),
-    /// Claude API returned a non-success status code.
+    /// Gemini API returned a non-success status code.
     ApiError(reqwest::StatusCode, String),
-    /// Failed to parse the JSON prediction from Claude's response.
+    /// Failed to parse the JSON prediction from Gemini's response.
     ParseFailed(String),
 }
 
 impl std::fmt::Display for AnalyzeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AnalyzeError::Http(e) => write!(f, "Claude API request failed: {}", e),
+            AnalyzeError::Http(e) => write!(f, "Gemini API request failed: {}", e),
             AnalyzeError::ApiError(code, body) => {
-                write!(f, "Claude API returned status {}: {}", code, body)
+                write!(f, "Gemini API returned status {}: {}", code, body)
             }
             AnalyzeError::ParseFailed(reason) => {
-                write!(f, "Failed to parse prediction from Claude response: {}", reason)
+                write!(f, "Failed to parse prediction from Gemini response: {}", reason)
             }
         }
     }
@@ -33,36 +33,48 @@ impl std::fmt::Display for AnalyzeError {
 impl std::error::Error for AnalyzeError {}
 
 // ---------------------------------------------------------------------------
-// Claude API request/response types
+// Gemini API request/response types
 // ---------------------------------------------------------------------------
 
-/// Request body for the Anthropic Messages API.
 #[derive(Debug, serde::Serialize)]
-struct ClaudeRequest {
-    model: String,
-    max_tokens: u32,
-    system: String,
-    messages: Vec<ClaudeMessage>,
+struct GeminiRequest {
+    #[serde(rename = "systemInstruction")]
+    system_instruction: SystemInstruction,
+    contents: Vec<GeminiContent>,
 }
 
-/// A single message in the Claude conversation.
 #[derive(Debug, serde::Serialize)]
-struct ClaudeMessage {
-    role: String,
-    content: String,
+struct SystemInstruction {
+    parts: Vec<GeminiPart>,
 }
 
-/// Top-level response from the Claude Messages API.
-#[derive(Debug, serde::Deserialize)]
-struct ClaudeResponse {
-    content: Vec<ContentBlock>,
+#[derive(Debug, serde::Serialize)]
+struct GeminiContent {
+    parts: Vec<GeminiPart>,
 }
 
-/// A content block in the Claude response.
+#[derive(Debug, serde::Serialize)]
+struct GeminiPart {
+    text: String,
+}
+
 #[derive(Debug, serde::Deserialize)]
-struct ContentBlock {
-    #[serde(rename = "type")]
-    block_type: String,
+struct GeminiResponse {
+    candidates: Option<Vec<GeminiCandidate>>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GeminiCandidate {
+    content: Option<GeminiCandidateContent>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GeminiCandidateContent {
+    parts: Option<Vec<GeminiPartResp>>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GeminiPartResp {
     text: Option<String>,
 }
 
@@ -70,20 +82,13 @@ struct ContentBlock {
 // Constants
 // ---------------------------------------------------------------------------
 
-const CLAUDE_API_URL: &str = "https://api.anthropic.com/v1/messages";
-const CLAUDE_MODEL: &str = "claude-sonnet-4-20250514";
-const ANTHROPIC_VERSION: &str = "2023-06-01";
+const GEMINI_API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Calls the Claude API to generate a structured prediction for the given asset.
-///
-/// The system prompt frames Claude as a financial analyst. The user prompt
-/// contains the asset's market data. The response is parsed strictly; if
-/// parsing fails, an [`AnalyzeError::ParseFailed`] is returned (the caller
-/// should log and skip the asset).
+/// Calls the Gemini API to generate a structured prediction for the given asset.
 pub async fn analyze(
     client: &reqwest::Client,
     config: &Config,
@@ -92,20 +97,21 @@ pub async fn analyze(
     let system_prompt = build_system_prompt();
     let user_prompt = build_user_prompt(asset);
 
-    let request_body = ClaudeRequest {
-        model: CLAUDE_MODEL.to_string(),
-        max_tokens: 1024,
-        system: system_prompt,
-        messages: vec![ClaudeMessage {
-            role: "user".to_string(),
-            content: user_prompt,
+    let request_body = GeminiRequest {
+        system_instruction: SystemInstruction {
+            parts: vec![GeminiPart {
+                text: system_prompt,
+            }],
+        },
+        contents: vec![GeminiContent {
+            parts: vec![GeminiPart { text: user_prompt }],
         }],
     };
 
+    let url = format!("{}?key={}", GEMINI_API_BASE, config.gemini_api_key);
+
     let response = client
-        .post(CLAUDE_API_URL)
-        .header("x-api-key", &config.claude_api_key)
-        .header("anthropic-version", ANTHROPIC_VERSION)
+        .post(&url)
         .header("content-type", "application/json")
         .json(&request_body)
         .send()
@@ -118,27 +124,24 @@ pub async fn analyze(
         return Err(AnalyzeError::ApiError(status, body));
     }
 
-    let claude_response: ClaudeResponse = response
+    let gemini_response: GeminiResponse = response
         .json()
         .await
         .map_err(|e| AnalyzeError::ParseFailed(format!("response deserialization: {}", e)))?;
 
-    // Extract the text content from the first text block.
-    let text = claude_response
-        .content
-        .iter()
-        .find_map(|block| {
-            if block.block_type == "text" {
-                block.text.clone()
-            } else {
-                None
-            }
-        })
+    // Extract the text content from the first candidate block.
+    let text = gemini_response
+        .candidates
+        .and_then(|c| c.into_iter().next())
+        .and_then(|c| c.content)
+        .and_then(|c| c.parts)
+        .and_then(|p| p.into_iter().next())
+        .and_then(|p| p.text)
         .ok_or_else(|| {
-            AnalyzeError::ParseFailed("No text content block in Claude response".to_string())
+            AnalyzeError::ParseFailed("No text content block in Gemini response".to_string())
         })?;
 
-    // Parse the JSON prediction from the text. Claude may wrap the JSON in
+    // Parse the JSON prediction from the text. Gemini may wrap the JSON in
     // markdown code fences, so we strip those if present.
     let json_str = extract_json(&text);
 

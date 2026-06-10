@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 
@@ -28,7 +30,14 @@ pub async fn run_migrations(pool: &PgPool) {
             registered_at BIGINT NOT NULL,
             is_active BOOLEAN NOT NULL DEFAULT TRUE
         );
+        "#,
+    )
+    .execute(pool)
+    .await
+    .expect("Failed to create assets table");
 
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS predictions (
             id BIGINT PRIMARY KEY,
             agent TEXT NOT NULL,
@@ -41,7 +50,14 @@ pub async fn run_migrations(pool: &PgPool) {
             status TEXT NOT NULL DEFAULT 'Pending',
             resolved_value BIGINT
         );
+        "#,
+    )
+    .execute(pool)
+    .await
+    .expect("Failed to create predictions table");
 
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS agent_scores (
             agent TEXT PRIMARY KEY,
             total_predictions INT NOT NULL DEFAULT 0,
@@ -54,7 +70,7 @@ pub async fn run_migrations(pool: &PgPool) {
     )
     .execute(pool)
     .await
-    .expect("Failed to run database migrations");
+    .expect("Failed to create agent_scores table");
 
     tracing::info!("Database migrations applied successfully");
 }

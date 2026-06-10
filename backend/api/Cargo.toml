@@ -23,3 +23,4 @@ chrono = { version = "0.4", features = ["serde"] }
 # stellar-sdk is not available as a standalone pure-Rust crate; stellar-xdr
 # provides the low-level XDR types needed to decode contract events.
 stellar-xdr = { version = "22", features = ["std", "serde"] }
+base64 = "0.22.1"

@@ -9,6 +9,7 @@ use crate::models::RawPrediction;
 
 /// Errors that can occur when submitting a prediction to the Soroban contract.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum SubmitError {
     /// Failed to decode the deployer secret key.
     KeyDecode(String),
