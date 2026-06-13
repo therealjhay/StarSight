@@ -16,8 +16,14 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-surface-base text-text-primary">
+        <a 
+          href="#main-content" 
+          className="sr-only focus:not-sr-only focus:absolute focus:p-4 focus:bg-surface-base focus:z-50 focus:top-0 focus:left-0"
+        >
+          Skip to content
+        </a>
         <Nav />
-        <main className="mx-auto max-w-7xl px-6 py-6">{children}</main>
+        <main id="main-content" className="mx-auto max-w-7xl px-6 py-6">{children}</main>
       </body>
     </html>
   );
