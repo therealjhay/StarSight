@@ -28,7 +28,7 @@ export default function AgentsTable({ data }: AgentsTableProps) {
       render: (row) => (
         <Link
           href={`/agents/${encodeURIComponent(row.agent)}`}
-          className="hover:text-accent transition-colors duration-150"
+          className="hover:text-accent transition-colors duration-normal"
         >
           <AddressCell address={row.agent} />
         </Link>

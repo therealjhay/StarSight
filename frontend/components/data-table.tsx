@@ -84,7 +84,7 @@ function TableView<T>({
           {data.map((row, i) => (
             <tr
               key={getRowKey ? getRowKey(row) : i}
-              className="border-b border-border last:border-b-0 hover:bg-surface-overlay transition-colors duration-100"
+              className="border-b border-border last:border-b-0 hover:bg-surface-overlay transition-colors duration-fast"
             >
               {columns.map((col) => (
                 <td

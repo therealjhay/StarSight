@@ -37,7 +37,7 @@ export default function Nav() {
             <Link
               key={link.href}
               href={link.href}
-              className={`text-sm transition-colors duration-150 ${
+              className={`text-sm transition-colors duration-normal ${
                 isActive
                   ? "text-text-primary font-medium"
                   : "text-text-muted hover:text-text-primary"
@@ -77,7 +77,7 @@ export default function Nav() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`text-base p-2 transition-colors duration-150 rounded ${
+                className={`text-base p-2 transition-colors duration-normal rounded ${
                   isActive
                     ? "bg-surface-raised text-text-primary font-medium"
                     : "text-text-muted hover:text-text-primary hover:bg-surface-overlay"

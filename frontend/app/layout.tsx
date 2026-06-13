@@ -8,6 +8,10 @@ export const metadata: Metadata = {
     "Real-time dashboard for AI-driven real-world asset predictions on the Stellar network.",
 };
 
+export const viewport = {
+  themeColor: "#0a0a0f",
+};
+
 export default function RootLayout({
   children,
 }: {

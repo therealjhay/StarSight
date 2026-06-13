@@ -47,6 +47,10 @@ const config: Config = {
           "monospace",
         ],
       },
+      transitionDuration: {
+        fast: "100ms",
+        normal: "150ms",
+      },
       keyframes: {
         "fade-in": {
           "0%": { opacity: "0" },
