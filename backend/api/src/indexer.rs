@@ -2,11 +2,11 @@
 //! and upserts parsed data into PostgreSQL. New prediction events are also
 //! broadcast to active WebSocket connections.
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
+use stellar_xdr::curr::{ReadXdr, ScVal};
 
 use crate::config::Config;
-// These model types will be used once XDR event parsing is implemented.
-#[allow(unused_imports)]
 use crate::models::{AgentScore, Asset, Prediction};
 use crate::AppState;
 
@@ -71,17 +71,12 @@ struct GetEventsResult {
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct SorobanEvent {
-    /// The type of event (contract, system, diagnostic).
     #[serde(rename = "type")]
     event_type: String,
-    /// Ledger sequence the event was emitted in.
     ledger: u64,
-    /// Contract ID that emitted the event.
     #[serde(rename = "contractId")]
     contract_id: String,
-    /// XDR-encoded topic segments (base64).
     topic: Vec<String>,
-    /// XDR-encoded event value (base64).
     value: String,
 }
 
@@ -97,25 +92,17 @@ struct GetLatestLedgerResult {
 // Indexer main loop
 // ---------------------------------------------------------------------------
 
-/// Runs the event indexer loop. This function never returns under normal operation.
-/// On errors, it logs and retries after the poll interval.
 pub async fn run(state: AppState, config: Config) {
     let client = reqwest::Client::new();
 
-    // Determine the starting ledger by fetching the latest.
     let mut cursor_ledger = match fetch_latest_ledger(&client, &config.stellar_rpc_url).await {
         Ok(seq) => {
-            // Start a few ledgers back to catch any events we might have missed.
             let start = seq.saturating_sub(100);
-            tracing::info!(
-                "Indexer starting from ledger {} (latest: {})",
-                start,
-                seq
-            );
+            tracing::info!("Indexer starting from ledger {} (latest: {})", start, seq);
             start
         }
         Err(e) => {
-            tracing::error!("Failed to fetch latest ledger on startup: {}. Starting from 0.", e);
+            tracing::error!("Failed to fetch latest ledger: {}. Starting from 0.", e);
             0
         }
     };
@@ -124,11 +111,7 @@ pub async fn run(state: AppState, config: Config) {
         match poll_events(&client, &config, &state, cursor_ledger).await {
             Ok(new_cursor) => {
                 if new_cursor > cursor_ledger {
-                    tracing::info!(
-                        "Indexer advanced cursor from ledger {} to {}",
-                        cursor_ledger,
-                        new_cursor
-                    );
+                    tracing::info!("Indexer advanced cursor from {} to {}", cursor_ledger, new_cursor);
                     cursor_ledger = new_cursor;
                 }
             }
@@ -136,12 +119,10 @@ pub async fn run(state: AppState, config: Config) {
                 tracing::error!("Indexer poll error: {}. Will retry.", e);
             }
         }
-
         tokio::time::sleep(tokio::time::Duration::from_secs(POLL_INTERVAL_SECS)).await;
     }
 }
 
-/// Fetches the latest ledger sequence from the Soroban RPC.
 async fn fetch_latest_ledger(
     client: &reqwest::Client,
     rpc_url: &str,
@@ -152,21 +133,15 @@ async fn fetch_latest_ledger(
         method: "getLatestLedger",
         params: GetLatestLedgerParams {},
     };
-
     let resp: JsonRpcResponse<GetLatestLedgerResult> =
         client.post(rpc_url).json(&req).send().await?.json().await?;
 
     if let Some(err) = resp.error {
         return Err(format!("RPC error {}: {}", err.code, err.message).into());
     }
-
-    resp.result
-        .map(|r| r.sequence)
-        .ok_or_else(|| "No result in getLatestLedger response".into())
+    resp.result.map(|r| r.sequence).ok_or_else(|| "No result".into())
 }
 
-/// Polls the Soroban RPC for events from all four contracts starting at `start_ledger`.
-/// Returns the new cursor ledger to use for the next poll.
 async fn poll_events(
     client: &reqwest::Client,
     config: &Config,
@@ -203,39 +178,25 @@ async fn poll_events(
         return Err(format!("RPC error {}: {}", err.code, err.message).into());
     }
 
-    let result = resp.result.ok_or("No result in getEvents response")?;
+    let result = resp.result.ok_or("No result")?;
     let latest_ledger = result.latest_ledger.unwrap_or(start_ledger);
 
     if let Some(events) = result.events {
-        if !events.is_empty() {
-            tracing::info!("Indexer received {} events", events.len());
-        }
-
         for event in &events {
             if let Err(e) = process_event(event, config, state).await {
-                tracing::error!(
-                    "Failed to process event from contract {} at ledger {}: {}",
-                    event.contract_id,
-                    event.ledger,
-                    e
-                );
-                // Continue processing remaining events.
+                tracing::error!("Failed to process event at ledger {}: {}", event.ledger, e);
             }
         }
     }
 
-    // Advance past the latest ledger we've processed.
     Ok(latest_ledger.saturating_add(1))
 }
 
-/// Processes a single Soroban contract event by routing it to the correct
-/// handler based on which contract emitted it.
 async fn process_event(
     event: &SorobanEvent,
     config: &Config,
     state: &AppState,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Determine which contract emitted the event.
     let contract_id = &event.contract_id;
 
     if contract_id == &config.asset_registry_contract_id {
@@ -244,53 +205,108 @@ async fn process_event(
         process_prediction_event(event, state).await
     } else if contract_id == &config.reputation_contract_id {
         process_reputation_event(event, state).await
-    } else if contract_id == &config.rewards_contract_id {
-        // Rewards events don't require indexing into the DB currently.
-        tracing::info!("Rewards contract event at ledger {}", event.ledger);
-        Ok(())
     } else {
-        tracing::warn!("Unknown contract ID in event: {}", contract_id);
         Ok(())
     }
 }
 
 // ---------------------------------------------------------------------------
-// Event parsers — stubs with TODO markers
-//
-// Each function receives a SorobanEvent whose `topic` and `value` fields are
-// base64-encoded XDR. The exact XDR types to decode are:
-//   - topic[0]: ScVal::Symbol — the function/event name
-//   - topic[1..]: ScVal variants — indexed parameters
-//   - value: ScVal — the event body
-//
-// Use `stellar_xdr::curr::{ReadXdr, ScVal}` to decode:
-//   let bytes = base64::decode(&event.topic[0])?;
-//   let sc_val = ScVal::from_xdr(bytes)?;
+// XDR Decoding Helpers
+// ---------------------------------------------------------------------------
+
+fn decode_b64(b64: &str) -> Result<ScVal, Box<dyn std::error::Error>> {
+    let bytes = STANDARD.decode(b64)?;
+    Ok(ScVal::from_xdr(bytes, stellar_xdr::curr::Limits::none())?)
+}
+
+fn map_get<'a>(val: &'a ScVal, key: &str) -> Option<&'a ScVal> {
+    if let ScVal::Map(Some(m)) = val {
+        for entry in m.iter() {
+            if let ScVal::Symbol(sym) = &entry.key {
+                if sym.to_string() == key {
+                    return Some(&entry.val);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn ext_str(val: &ScVal) -> Option<String> {
+    match val {
+        ScVal::String(s) => String::from_utf8(s.to_vec()).ok(),
+        ScVal::Symbol(s) => Some(s.to_string()),
+        ScVal::Address(addr) => match addr {
+            stellar_xdr::curr::ScAddress::Account(acc) => {
+                Some(format!("{:?}", acc))
+            }
+            stellar_xdr::curr::ScAddress::Contract(hash) => {
+                let arr: [u8; 32] = hash.0.to_vec().try_into().unwrap_or([0; 32]);
+                Some(stellar_strkey::Contract(arr).to_string().as_str().to_string())
+            }
+        },
+        ScVal::Vec(Some(v)) => v.get(0).and_then(ext_str), // Handle enums
+        ScVal::Bytes(b) => {
+             if b.len() == 32 {
+                 let arr: [u8; 32] = b.to_vec().try_into().unwrap();
+                 Some(stellar_strkey::Contract(arr).to_string().as_str().to_string())
+             } else {
+                 Some(String::from_utf8_lossy(&b.to_vec()).to_string())
+             }
+        }
+        _ => None,
+    }
+}
+
+fn ext_i64(val: &ScVal) -> Option<i64> {
+    match val {
+        ScVal::I64(v) => Some(*v),
+        ScVal::U64(v) => Some(*v as i64),
+        ScVal::I32(v) => Some(*v as i64),
+        ScVal::U32(v) => Some(*v as i64),
+        _ => None,
+    }
+}
+
+fn ext_bool(val: &ScVal) -> Option<bool> {
+    if let ScVal::Bool(b) = val {
+        Some(*b)
+    } else {
+        None
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Event parsers
 // ---------------------------------------------------------------------------
 
 async fn process_asset_event(
     event: &SorobanEvent,
     state: &AppState,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // TODO: Decode event.topic[0] as ScVal::Symbol to determine the function name.
-    //       Expected symbols: "register_asset", "deactivate_asset"
-    //
-    // TODO: Decode event.value as the Asset struct XDR (ScVal::Map with fields:
-    //       id, name, issuer, asset_type, stellar_asset_contract, registered_at, is_active).
-    //
-    // For now, log the raw event for debugging.
-    tracing::info!(
-        "Asset registry event at ledger {} — topic count: {}, value len: {} bytes",
-        event.ledger,
-        event.topic.len(),
-        event.value.len()
-    );
+    if event.topic.is_empty() { return Ok(()); }
+    let topic0 = decode_b64(&event.topic[0])?;
+    let func_name = ext_str(&topic0).unwrap_or_default();
 
-    // Stub: When XDR parsing is implemented, upsert the decoded Asset:
-    // let asset = parse_asset_from_xdr(&event.topic, &event.value)?;
-    // crate::db::upsert_asset(&state.pool, &asset).await?;
+    if func_name == "register_asset" || func_name == "deactivate_asset" {
+        let val = decode_b64(&event.value)?;
+        
+        let asset = Asset {
+            id: map_get(&val, "id").and_then(ext_str).unwrap_or_default(),
+            name: map_get(&val, "name").and_then(ext_str).unwrap_or_default(),
+            issuer: map_get(&val, "issuer").and_then(ext_str).unwrap_or_default(),
+            asset_type: map_get(&val, "asset_type").and_then(ext_str).unwrap_or_default(),
+            stellar_asset_contract: map_get(&val, "stellar_asset_contract").and_then(ext_str).unwrap_or_default(),
+            registered_at: map_get(&val, "registered_at").and_then(ext_i64).unwrap_or(0),
+            is_active: map_get(&val, "is_active").and_then(ext_bool).unwrap_or(true),
+        };
 
-    let _ = state; // suppress unused warning until parsing is implemented
+        if !asset.id.is_empty() {
+            crate::db::upsert_asset(&state.pool, &asset).await?;
+            tracing::info!("Upserted asset: {}", asset.id);
+        }
+    }
+
     Ok(())
 }
 
@@ -298,33 +314,47 @@ async fn process_prediction_event(
     event: &SorobanEvent,
     state: &AppState,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // TODO: Decode event.topic[0] as ScVal::Symbol to determine the function name.
-    //       Expected symbols: "submit_prediction", "resolve_prediction"
-    //
-    // TODO: For "submit_prediction", decode event.value as the Prediction struct XDR
-    //       (ScVal::Map with fields: id, agent, asset_id, prediction_type, value,
-    //       confidence, submitted_at, resolution_ledger, status, resolved_value).
-    //
-    // TODO: For "resolve_prediction", decode event.value to get the prediction ID
-    //       and actual_value, then update the existing row.
-    tracing::info!(
-        "Prediction market event at ledger {} — topic count: {}, value len: {} bytes",
-        event.ledger,
-        event.topic.len(),
-        event.value.len()
-    );
+    if event.topic.is_empty() { return Ok(()); }
+    let topic0 = decode_b64(&event.topic[0])?;
+    let func_name = ext_str(&topic0).unwrap_or_default();
 
-    // Stub: When XDR parsing is implemented:
-    // let prediction = parse_prediction_from_xdr(&event.topic, &event.value)?;
-    // crate::db::upsert_prediction(&state.pool, &prediction).await?;
-    //
-    // // Broadcast new predictions to WebSocket clients.
-    // if is_submit_event {
-    //     let json = serde_json::to_string(&prediction)?;
-    //     let _ = state.tx.send(json); // Ignore error if no receivers.
-    // }
+    if func_name == "submit_prediction" {
+        let val = decode_b64(&event.value)?;
 
-    let _ = state; // suppress unused warning until parsing is implemented
+        let prediction = Prediction {
+            id: map_get(&val, "id").and_then(ext_i64).unwrap_or(0),
+            agent: map_get(&val, "agent").and_then(ext_str).unwrap_or_default(),
+            asset_id: map_get(&val, "asset_id").and_then(ext_str).unwrap_or_default(),
+            prediction_type: map_get(&val, "prediction_type").and_then(ext_str).unwrap_or_default(),
+            value: map_get(&val, "value").and_then(ext_i64).unwrap_or(0),
+            confidence: map_get(&val, "confidence").and_then(ext_i64).unwrap_or(0) as i32,
+            submitted_at: map_get(&val, "submitted_at").and_then(ext_i64).unwrap_or(0),
+            resolution_ledger: map_get(&val, "resolution_ledger").and_then(ext_i64).unwrap_or(0),
+            status: map_get(&val, "status").and_then(ext_str).unwrap_or_else(|| "Pending".to_string()),
+            resolved_value: map_get(&val, "resolved_value").and_then(ext_i64),
+        };
+
+        crate::db::upsert_prediction(&state.pool, &prediction).await?;
+        tracing::info!("Upserted prediction: {}", prediction.id);
+
+        // Broadcast new predictions to WebSocket clients.
+        if let Ok(json) = serde_json::to_string(&prediction) {
+            let _ = state.tx.send(json); // Ignore error if no receivers.
+        }
+    } else if func_name == "resolve_prediction" {
+        let val = decode_b64(&event.value)?;
+        let id = map_get(&val, "id").and_then(ext_i64).unwrap_or(0);
+        
+        if id > 0 {
+            if let Some(mut existing) = crate::db::get_prediction_by_id(&state.pool, id).await? {
+                existing.status = map_get(&val, "status").and_then(ext_str).unwrap_or_else(|| "Resolved".to_string());
+                existing.resolved_value = map_get(&val, "resolved_value").and_then(ext_i64);
+                crate::db::upsert_prediction(&state.pool, &existing).await?;
+                tracing::info!("Resolved prediction: {}", id);
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -332,23 +362,27 @@ async fn process_reputation_event(
     event: &SorobanEvent,
     state: &AppState,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // TODO: Decode event.topic[0] as ScVal::Symbol to determine the function name.
-    //       Expected symbol: "score_prediction"
-    //
-    // TODO: Decode event.value to extract the updated ReputationScore struct
-    //       (ScVal::Map with fields: agent, total_predictions, correct_predictions,
-    //       accuracy_bps, streak, last_scored_at).
-    tracing::info!(
-        "Reputation event at ledger {} — topic count: {}, value len: {} bytes",
-        event.ledger,
-        event.topic.len(),
-        event.value.len()
-    );
+    if event.topic.is_empty() { return Ok(()); }
+    let topic0 = decode_b64(&event.topic[0])?;
+    let func_name = ext_str(&topic0).unwrap_or_default();
 
-    // Stub: When XDR parsing is implemented:
-    // let score = parse_agent_score_from_xdr(&event.topic, &event.value)?;
-    // crate::db::upsert_agent_score(&state.pool, &score).await?;
+    if func_name == "score_prediction" {
+        let val = decode_b64(&event.value)?;
 
-    let _ = state; // suppress unused warning until parsing is implemented
+        let score = AgentScore {
+            agent: map_get(&val, "agent").and_then(ext_str).unwrap_or_default(),
+            total_predictions: map_get(&val, "total_predictions").and_then(ext_i64).unwrap_or(0) as i32,
+            correct_predictions: map_get(&val, "correct_predictions").and_then(ext_i64).unwrap_or(0) as i32,
+            accuracy_bps: map_get(&val, "accuracy_bps").and_then(ext_i64).unwrap_or(0) as i32,
+            streak: map_get(&val, "streak").and_then(ext_i64).unwrap_or(0) as i32,
+            last_scored_at: map_get(&val, "last_scored_at").and_then(ext_i64).unwrap_or(0),
+        };
+
+        if !score.agent.is_empty() {
+            crate::db::upsert_agent_score(&state.pool, &score).await?;
+            tracing::info!("Upserted reputation for: {}", score.agent);
+        }
+    }
+
     Ok(())
 }

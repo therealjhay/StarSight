@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: starsight-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: starsight
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./backend/api
+    container_name: starsight-api
+    depends_on:
+      - postgres
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  agent:
+    build:
+      context: ./agent
+    container_name: starsight-agent
+    depends_on:
+      - api
+    env_file:
+      - .env
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
