@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getAsset, getPredictionsByAsset } from "@/lib/api";
 import AddressCell from "@/components/address-cell";
 import PredictionsTable from "@/components/predictions-table";
+import StatCard from "@/components/stat-card";
 import type { Prediction } from "@/lib/types";
 
 interface PageProps {
@@ -42,28 +43,20 @@ export default async function AssetDetailPage({ params }: PageProps) {
       </div>
 
       {/* Metadata */}
-      <div className="border border-border bg-surface-raised p-5 mb-6 animate-fade-in">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-          <div>
-            <p className="text-xs uppercase tracking-widest text-text-muted mb-1">Type</p>
-            <p className="text-text-primary">{asset.asset_type}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-widest text-text-muted mb-1">Issuer</p>
-            <AddressCell address={asset.issuer} />
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-widest text-text-muted mb-1">Contract</p>
-            <AddressCell address={asset.stellar_asset_contract} />
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-widest text-text-muted mb-1">Status</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatCard label="Type" value={asset.asset_type} delay={0} />
+        <StatCard label="Issuer" value={<AddressCell address={asset.issuer} />} delay={100} />
+        <StatCard label="Contract" value={<AddressCell address={asset.stellar_asset_contract} />} delay={200} />
+        <StatCard
+          label="Status"
+          value={
             <span className={`inline-flex items-center gap-1.5 text-sm ${asset.is_active ? "text-success" : "text-danger"}`}>
-              <span className={`inline-block w-2 h-2 rounded-full ${asset.is_active ? "bg-success" : "bg-danger"}`} />
+              <span className={`inline-block w-2 h-2 rounded-full ${asset.is_active ? "bg-success" : "bg-danger"}`} aria-hidden="true" />
               {asset.is_active ? "Active" : "Inactive"}
             </span>
-          </div>
-        </div>
+          }
+          delay={300}
+        />
       </div>
 
       {/* Prediction History */}

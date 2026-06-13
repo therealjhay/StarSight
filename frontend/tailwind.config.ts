@@ -21,6 +21,11 @@ const config: Config = {
         success: "#22c55e",
         danger: "#ef4444",
         warning: "#eab308",
+        status: {
+          pending: "#eab308",
+          resolved: "#3b82f6",
+          scored: "#22c55e",
+        },
         text: {
           primary: "#f8fafc",
           muted: "#64748b",

@@ -33,6 +33,7 @@ export default function AgentsTable({ data }: AgentsTableProps) {
           <AddressCell address={row.agent} />
         </Link>
       ),
+      getRowKey: (row) => row.agent,
     },
     {
       key: "accuracy_bps",
@@ -51,7 +52,14 @@ export default function AgentsTable({ data }: AgentsTableProps) {
       header: "Streak",
       render: (row) => (
         <span className="font-mono">
-          {row.streak > 0 ? `🔥 ${row.streak}` : row.streak}
+          {row.streak > 0 ? (
+            <>
+              <span aria-hidden="true">🔥</span> {row.streak}
+              <span className="sr-only"> streak</span>
+            </>
+          ) : (
+            row.streak
+          )}
         </span>
       ),
       sortValue: (row) => row.streak,
@@ -79,6 +87,7 @@ export default function AgentsTable({ data }: AgentsTableProps) {
       sortValue: (row) => row.correct_predictions,
       mono: true,
       align: "right",
+      hideOnMobile: true,
     },
   ];
 

@@ -19,6 +19,7 @@ const columns: Column<Asset>[] = [
     ),
     sortValue: (row) => row.id,
     mono: true,
+    getRowKey: (row) => row.id,
   },
   {
     key: "name",
@@ -35,22 +36,25 @@ const columns: Column<Asset>[] = [
       </span>
     ),
     sortValue: (row) => row.asset_type,
+    hideOnMobile: true,
   },
   {
     key: "issuer",
     header: "Issuer",
     render: (row) => <AddressCell address={row.issuer} />,
+    hideOnMobile: true,
   },
   {
     key: "is_active",
     header: "Status",
     render: (row) => (
       <span
-        className={`inline-block w-2 h-2 rounded-full ${
-          row.is_active ? "bg-success" : "bg-danger"
-        }`}
+        className={`inline-flex items-center gap-1.5 ${row.is_active ? "text-success" : "text-danger"}`}
         title={row.is_active ? "Active" : "Inactive"}
-      />
+      >
+        <span className={`inline-block w-2 h-2 rounded-full ${row.is_active ? "bg-success" : "bg-danger"}`} aria-hidden="true" />
+        {row.is_active ? "Active" : "Inactive"}
+      </span>
     ),
     sortValue: (row) => (row.is_active ? 1 : 0),
     align: "center",

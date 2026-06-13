@@ -4,6 +4,7 @@ import DataTable, { type Column } from "@/components/data-table";
 import AddressCell from "@/components/address-cell";
 import PredictionBadge from "@/components/prediction-badge";
 import type { Prediction } from "@/lib/types";
+import { formatDate } from "@/lib/format";
 
 interface PredictionsTableProps {
   data: Prediction[];
@@ -27,6 +28,7 @@ export default function PredictionsTable({
         <span className="font-mono text-text-muted">#{r.id}</span>
       ),
       sortValue: (r) => r.id,
+      getRowKey: (r) => r.id,
     },
     {
       key: "agent",
@@ -59,6 +61,7 @@ export default function PredictionsTable({
         </span>
       ),
       sortValue: (r) => r.prediction_type,
+      hideOnMobile: true,
     },
     {
       key: "value",
@@ -81,6 +84,7 @@ export default function PredictionsTable({
         </span>
       ),
       sortValue: (r) => r.confidence,
+      hideOnMobile: true,
     },
     {
       key: "status",
@@ -94,13 +98,11 @@ export default function PredictionsTable({
       mono: true,
       render: (r) => (
         <span className="font-mono text-text-muted text-xs">
-          {new Date(r.submitted_at * 1000)
-            .toISOString()
-            .slice(0, 19)
-            .replace("T", " ")}
+          {formatDate(r.submitted_at)}
         </span>
       ),
       sortValue: (r) => r.submitted_at,
+      hideOnMobile: true,
     },
   ];
 

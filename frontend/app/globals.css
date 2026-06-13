@@ -13,6 +13,11 @@
     @apply bg-surface-base text-text-primary font-sans antialiased;
   }
 
+  /* Focus visible for keyboard navigation */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-surface-base;
+  }
+
   /* Scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
@@ -29,5 +34,92 @@
 
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-text-muted;
+  }
+
+  /* Reduce motion */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Live pulse animation */
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(1);
+      opacity: 0.8;
+    }
+    50% {
+      transform: scale(1.5);
+      opacity: 0.4;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 0.8;
+    }
+  }
+
+  .animate-pulse-ring {
+    animation: pulse-ring 2s ease-out infinite;
+  }
+
+  /* Staggered entrance */
+  @keyframes slide-up-fade {
+    0% {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-slide-up-fade {
+    animation: slide-up-fade 0.4s ease-out forwards;
+    will-change: transform, opacity;
+    contain: layout;
+  }
+
+  .animate-fade-in {
+    will-change: opacity;
+    contain: layout;
+  }
+
+  /* New row highlight */
+  @keyframes highlight-new {
+    0% {
+      background-color: rgba(59, 130, 246, 0.15);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+
+  .animate-highlight-new {
+    animation: highlight-new 1s ease-out forwards;
+  }
+
+  /* Stat card counter */
+  @keyframes count-up {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-count-up {
+    animation: count-up 0.5s ease-out forwards;
   }
 }

@@ -5,6 +5,7 @@ import StatCard from "@/components/stat-card";
 import AddressCell from "@/components/address-cell";
 import PredictionsTable from "@/components/predictions-table";
 import type { Prediction } from "@/lib/types";
+import { formatDate } from "@/lib/format";
 
 interface PageProps {
   params: { address: string };
@@ -50,14 +51,23 @@ export default async function AgentDetailPage({ params }: PageProps) {
         <StatCard label="Total Predictions" value={score.total_predictions} delay={100} />
         <StatCard
           label="Streak"
-          value={score.streak > 0 ? `🔥 ${score.streak}` : `${score.streak}`}
+          value={
+            score.streak > 0 ? (
+              <>
+                <span aria-hidden="true">🔥</span> {score.streak}
+                <span className="sr-only"> streak</span>
+              </>
+            ) : (
+              score.streak
+            )
+          }
           delay={200}
         />
         <StatCard
           label="Last Scored"
           value={
             score.last_scored_at
-              ? new Date(score.last_scored_at * 1000).toISOString().slice(0, 10)
+              ? formatDate(score.last_scored_at)
               : "—"
           }
           delay={300}

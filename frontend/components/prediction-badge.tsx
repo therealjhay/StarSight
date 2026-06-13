@@ -1,7 +1,7 @@
 const statusStyles: Record<string, string> = {
-  Pending: "bg-warning/15 text-warning border-warning/30",
-  Resolved: "bg-accent/15 text-accent border-accent/30",
-  Scored: "bg-success/15 text-success border-success/30",
+  Pending: "bg-status-pending/15 text-status-pending border-status-pending/30",
+  Resolved: "bg-status-resolved/15 text-status-resolved border-status-resolved/30",
+  Scored: "bg-status-scored/15 text-status-scored border-status-scored/30",
 };
 
 interface PredictionBadgeProps {
@@ -13,7 +13,9 @@ export default function PredictionBadge({ status }: PredictionBadgeProps) {
 
   return (
     <span
-      className={`inline-block px-2.5 py-0.5 text-xs font-medium border ${style}`}
+      role="status"
+      aria-live="polite"
+      className={`inline-flex items-center px-3 py-1.5 text-xs font-medium border ${style} min-h-[44px]`}
     >
       {status}
     </span>
