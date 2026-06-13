@@ -2,10 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { Prediction } from "@/lib/types";
-import PredictionBadge from "@/components/prediction-badge";
-import AddressCell from "@/components/address-cell";
+import PredictionsTable from "@/components/predictions-table";
 
-const WS_URL = "ws://localhost:3001/ws";
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3001/ws";
 
 export default function PredictionsFeed() {
   const [predictions, setPredictions] = useState<Prediction[]>([]);
@@ -45,7 +44,11 @@ export default function PredictionsFeed() {
     ws.onmessage = (event) => {
       try {
         const prediction: Prediction = JSON.parse(event.data);
-        setPredictions((prev) => [prediction, ...prev]);
+        setPredictions((prev) => {
+          const next = [prediction, ...prev];
+          // Cap at 200 items to prevent memory leak
+          return next.slice(0, 200);
+        });
       } catch {
         // Invalid message
       }
@@ -78,67 +81,68 @@ export default function PredictionsFeed() {
           <h1 className="text-xl font-semibold text-text-primary">Predictions</h1>
           <p className="text-sm text-text-muted mt-1">Live prediction feed</p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-text-muted">
+        <div
+          className="flex items-center gap-2 text-xs text-text-muted"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
           <span
-            className={`inline-block w-2 h-2 rounded-full ${
+            className={`inline-flex relative ${
               wsStatus === "open"
-                ? "bg-success"
+                ? "text-success"
                 : wsStatus === "connecting"
-                  ? "bg-warning"
-                  : "bg-danger"
+                  ? "text-warning"
+                  : "text-danger"
             }`}
-          />
-          {wsStatus === "open" ? "Live" : wsStatus === "connecting" ? "Connecting..." : "Disconnected"}
+            aria-hidden="true"
+          >
+            {wsStatus === "open" && (
+              <span className="absolute inset-0 w-2 h-2 rounded-full bg-success animate-pulse-ring" />
+            )}
+            <span className="relative inline-block w-2 h-2 rounded-full bg-current" />
+          </span>
+          <span>
+            {wsStatus === "open" ? "Live" : wsStatus === "connecting" ? "Connecting..." : "Disconnected"}
+          </span>
         </div>
       </div>
 
       {/* Table */}
       {loading ? (
-        <div className="border border-border bg-surface-raised p-8 text-center text-text-muted text-sm">
-          Loading...
+        <div className="border border-border bg-surface-raised overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-raised">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <th key={i} className="px-4 py-3"><div className="h-4 bg-surface-overlay rounded animate-pulse" /></th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[1, 2, 3, 4, 5].map((row) => (
+                <tr key={row} className="border-b border-border last:border-0">
+                  {[1, 2, 3, 4, 5, 6].map((col) => (
+                    <td key={col} className="px-4 py-3">
+                      <div className="h-4 bg-surface-overlay rounded animate-pulse w-3/4" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : predictions.length === 0 ? (
         <div id="predictions-empty" className="border border-border bg-surface-raised p-8 text-center text-text-muted text-sm">
           No data available
         </div>
       ) : (
-        <div className="overflow-x-auto border border-border animate-fade-in">
-          <table id="predictions-table" className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-surface-raised">
-                <th className="px-4 py-3 text-xs uppercase tracking-widest text-text-muted font-medium text-left">ID</th>
-                <th className="px-4 py-3 text-xs uppercase tracking-widest text-text-muted font-medium text-left">Agent</th>
-                <th className="px-4 py-3 text-xs uppercase tracking-widest text-text-muted font-medium text-left">Asset</th>
-                <th className="px-4 py-3 text-xs uppercase tracking-widest text-text-muted font-medium text-left">Type</th>
-                <th className="px-4 py-3 text-xs uppercase tracking-widest text-text-muted font-medium text-right">Value</th>
-                <th className="px-4 py-3 text-xs uppercase tracking-widest text-text-muted font-medium text-right">Confidence</th>
-                <th className="px-4 py-3 text-xs uppercase tracking-widest text-text-muted font-medium text-left">Status</th>
-                <th className="px-4 py-3 text-xs uppercase tracking-widest text-text-muted font-medium text-left">Submitted</th>
-              </tr>
-            </thead>
-            <tbody>
-              {predictions.map((p) => (
-                <tr
-                  key={`${p.id}-${p.submitted_at}`}
-                  className="border-b border-border last:border-b-0 hover:bg-surface-overlay transition-colors duration-100 animate-fade-in"
-                >
-                  <td className="px-4 py-3 font-mono text-text-muted whitespace-nowrap">#{p.id}</td>
-                  <td className="px-4 py-3 whitespace-nowrap"><AddressCell address={p.agent} /></td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <a href={`/assets/${encodeURIComponent(p.asset_id)}`} className="text-accent hover:underline font-mono text-sm">{p.asset_id}</a>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-xs uppercase tracking-wider text-text-muted">{p.prediction_type}</td>
-                  <td className="px-4 py-3 whitespace-nowrap font-mono text-right">{p.value.toLocaleString()}</td>
-                  <td className="px-4 py-3 whitespace-nowrap font-mono text-right">{(p.confidence / 100).toFixed(1)}%</td>
-                  <td className="px-4 py-3 whitespace-nowrap"><PredictionBadge status={p.status} /></td>
-                  <td className="px-4 py-3 whitespace-nowrap font-mono text-text-muted text-xs">
-                    {new Date(p.submitted_at * 1000).toISOString().slice(0, 19).replace("T", " ")}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PredictionsTable
+          id="predictions-table"
+          data={predictions}
+          emptyMessage="No predictions available"
+          linkAsset
+        />
       )}
     </div>
   );

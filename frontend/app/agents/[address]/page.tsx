@@ -22,19 +22,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function AgentDetailPage({ params }: PageProps) {
   let score;
-  let predictions: Prediction[] = [];
-
   try {
     score = await getAgentScore(params.address);
   } catch {
     notFound();
   }
 
-  try {
-    predictions = await getPredictionsByAgent(params.address);
-  } catch {
-    // Predictions unavailable
-  }
+  const predictions: Prediction[] = await getPredictionsByAgent(params.address);
 
   return (
     <div>
@@ -51,11 +45,13 @@ export default async function AgentDetailPage({ params }: PageProps) {
           label="Accuracy"
           value={`${(score.accuracy_bps / 100).toFixed(1)}%`}
           sub={`${score.correct_predictions} / ${score.total_predictions} correct`}
+          delay={0}
         />
-        <StatCard label="Total Predictions" value={score.total_predictions} />
+        <StatCard label="Total Predictions" value={score.total_predictions} delay={100} />
         <StatCard
           label="Streak"
           value={score.streak > 0 ? `🔥 ${score.streak}` : `${score.streak}`}
+          delay={200}
         />
         <StatCard
           label="Last Scored"
@@ -64,6 +60,7 @@ export default async function AgentDetailPage({ params }: PageProps) {
               ? new Date(score.last_scored_at * 1000).toISOString().slice(0, 10)
               : "—"
           }
+          delay={300}
         />
       </div>
 

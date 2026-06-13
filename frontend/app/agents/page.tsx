@@ -9,13 +9,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AgentsPage() {
-  let agents: AgentScore[] = [];
-
-  try {
-    agents = await getAgents();
-  } catch {
-    // API unavailable
-  }
+  const agents: AgentScore[] = await getAgents();
 
   return (
     <div>

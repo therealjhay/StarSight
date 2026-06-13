@@ -9,13 +9,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AssetsPage() {
-  let assets: Asset[] = [];
-
-  try {
-    assets = await getAssets();
-  } catch {
-    // API unavailable
-  }
+  const assets: Asset[] = await getAssets();
 
   return (
     <div>
